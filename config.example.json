@@ -1,0 +1,15 @@
+{
+  "requesterGroups": [
+    {
+      "id": 123456,
+      "minRank": 1
+    }
+  ],
+  "approverGroups": [
+    {
+      "id": 123456,
+      "minRank": 1
+    }
+  ],
+  "cors": ["example.com"]
+}
