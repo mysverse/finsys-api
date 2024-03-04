@@ -12,7 +12,7 @@ interface FinsysJsonConfiguration {
   cors: string[];
 }
 
-import jsonConfigFile from "../config.json";
+import jsonConfigFile from "../config.json" with { type: "json" };;
 
 const jsonConfig: FinsysJsonConfiguration = jsonConfigFile;
 
