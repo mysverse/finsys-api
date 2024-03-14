@@ -82,7 +82,7 @@ export async function fetchPayoutRequestDetails(requestId: number) {
 // Function to get all pending payout requests
 export async function getAllRequests(): Promise<PayoutRequestData[]> {
   const response = await pool.query<PayoutRequestData>(
-    `SELECT * FROM ${table_payouts}`
+    `SELECT * FROM ${table_payouts} ORDER BY created_at DESC`
   );
   return response.rows;
 }
@@ -90,7 +90,7 @@ export async function getAllRequests(): Promise<PayoutRequestData[]> {
 // Function to get all pending payout requests for a specific user
 export async function getPayoutRequestsByUser(userId: number) {
   const response = await pool.query<PayoutRequestData>(
-    `SELECT * FROM payout_requests WHERE user_id = $1`,
+    `SELECT * FROM payout_requests WHERE user_id = $1 ORDER BY created_at DESC`,
     [userId]
   );
   return response.rows;
