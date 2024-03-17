@@ -43,11 +43,17 @@ const maxRobux = config.settings.maxRobux;
 let accountUserId: number | undefined;
 const groupId = config.settings.groupId;
 
+let fph: any;
+
 async function payoutRobux(userId: number, amount: number) {
   // Step 1: Fetch X-CSRF Token
 
   const csrfResponse = await got.post("https://auth.roblox.com/v2/logout", {
     headers: { Cookie: `.ROBLOSECURITY=${userCookie}` },
+    retry: {
+      methods: ["POST"],
+      limit: 3,
+    },
     throwHttpErrors: false,
   });
 
@@ -61,10 +67,14 @@ async function payoutRobux(userId: number, amount: number) {
   const payoutResponse = await got.post(
     `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
     {
-      headers: {
+      headers: fph ?? {
         "Content-Type": "application/json",
         Cookie: `.ROBLOSECURITY=${userCookie}`,
         "X-CSRF-TOKEN": xCsrfToken,
+      },
+      retry: {
+        methods: ["POST"],
+        limit: 3,
       },
       json: {
         PayoutType: "FixedAmount",
@@ -110,6 +120,10 @@ async function payoutRobux(userId: number, amount: number) {
           Cookie: `.ROBLOSECURITY=${userCookie}`,
           "X-CSRF-TOKEN": xCsrfToken,
         },
+        retry: {
+          methods: ["POST"],
+          limit: 3,
+        },
         json: {
           challengeId: challengeMetadataId,
           actionType: "Generic",
@@ -145,6 +159,10 @@ async function payoutRobux(userId: number, amount: number) {
             "X-CSRF-TOKEN": xCsrfToken,
             "Content-Type": "application/json",
           },
+          retry: {
+            methods: ["POST"],
+            limit: 3,
+          },
           json: {
             challengeId: challengeHeaderId,
             challengeType: "twostepverification",
@@ -176,10 +194,16 @@ async function payoutRobux(userId: number, amount: number) {
         }),
       };
 
+      fph = finalPayoutHeaders;
+
       return await got.post(
         `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
         {
           headers: finalPayoutHeaders,
+          retry: {
+            methods: ["POST"],
+            limit: 10,
+          },
           json: {
             PayoutType: "FixedAmount",
             Recipients: [
@@ -204,6 +228,7 @@ async function payoutRobux(userId: number, amount: number) {
   } else {
     // Handle other errors
     console.error("Error with initial payout request.");
+    console.error(payoutResponse.body);
     throw new Error("Error with initial payout request.");
   }
 }
