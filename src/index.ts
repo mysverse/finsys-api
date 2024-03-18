@@ -43,7 +43,7 @@ const maxRobux = config.settings.maxRobux;
 let accountUserId: number | undefined;
 const groupId = config.settings.groupId;
 
-let fph: any;
+// let fph: any;
 
 async function payoutRobux(userId: number, amount: number) {
   // Step 1: Fetch X-CSRF Token
@@ -67,7 +67,7 @@ async function payoutRobux(userId: number, amount: number) {
   const payoutResponse = await got.post(
     `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
     {
-      headers: fph ?? {
+      headers: {
         "Content-Type": "application/json",
         Cookie: `.ROBLOSECURITY=${userCookie}`,
         "X-CSRF-TOKEN": xCsrfToken,
@@ -194,7 +194,7 @@ async function payoutRobux(userId: number, amount: number) {
         }),
       };
 
-      fph = finalPayoutHeaders;
+      // fph = finalPayoutHeaders;
 
       return await got.post(
         `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
