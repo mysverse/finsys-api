@@ -45,6 +45,27 @@ const groupId = config.settings.groupId;
 
 // let fph: any;
 
+function extractRobloxErrorReason(body: string) {
+  let response: string | undefined = undefined;
+  try {
+    const content = JSON.parse(body);
+    if (content) {
+      const errors = content.errors;
+      if (errors && Array.isArray(errors)) {
+        for (const { code, message, userFacingMessage } of errors) {
+          if (message) {
+            response = message;
+            break;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  }
+  return response;
+}
+
 async function payoutRobux(userId: number, amount: number) {
   // Step 1: Fetch X-CSRF Token
 
@@ -175,6 +196,10 @@ async function payoutRobux(userId: number, amount: number) {
       if (continueResponse.statusCode !== 200) {
         console.error("Challenge continuation failed.");
         console.error(continueResponse);
+        const errorType = extractRobloxErrorReason(continueResponse.body);
+        if (errorType) {
+          throw new Error(`Challenge continuation failed: ${errorType}`);
+        }
         throw new Error("Challenge continuation failed.");
       }
 
@@ -229,6 +254,10 @@ async function payoutRobux(userId: number, amount: number) {
     // Handle other errors
     console.error("Error with initial payout request.");
     console.error(payoutResponse.body);
+    const errorType = extractRobloxErrorReason(payoutResponse.body);
+    if (errorType) {
+      throw new Error(`Error with initial payout request: ${errorType}`);
+    }
     throw new Error("Error with initial payout request.");
   }
 }
