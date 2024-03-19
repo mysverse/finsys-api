@@ -18,12 +18,14 @@ export async function startDB() {
 
 const table_payouts = "payout_requests";
 
+type PayoutStatus = "pending" | "approved" | "rejected";
+
 interface PayoutRequestData {
   id: number;
   user_id: number;
   amount: number;
   reason: string;
-  status: "pending" | "approved" | "rejected";
+  status: PayoutStatus;
   roblox_group_id: number | null;
   category: string | null;
   approved_by_roblox_user_id: number | null;
@@ -58,12 +60,20 @@ export async function getPayoutRequestByUser(
 // Function to update the status of a payout request
 export async function updatePayoutRequestStatus(
   requestId: number,
-  status: string
+  status: PayoutStatus,
+  rejection_reason?: string
 ) {
-  await pool.query(`UPDATE ${table_payouts} SET status = $1 WHERE id = $2`, [
-    status,
-    requestId,
-  ]);
+  if (status === "rejected" && rejection_reason) {
+    await pool.query(
+      `UPDATE ${table_payouts} SET status = $1, rejection_reason = $2 WHERE id = $3`,
+      [status, rejection_reason, requestId]
+    );
+  } else {
+    await pool.query(`UPDATE ${table_payouts} SET status = $1 WHERE id = $2`, [
+      status,
+      requestId,
+    ]);
+  }
 }
 
 // Function to fetch payout request details if it's not already approved

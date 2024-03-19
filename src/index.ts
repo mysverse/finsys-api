@@ -373,12 +373,13 @@ server.post(
           Type.Literal("approved"),
           Type.Literal("rejected"),
         ]),
+        rejectionReason: Type.Optional(Type.String()),
       }),
     },
   },
   async (req, res) => {
     try {
-      const { requestId, status } = req.body;
+      const { requestId, status, rejectionReason } = req.body;
 
       // Fetch request details
       const requestDetails = await fetchPayoutRequestDetails(requestId);
@@ -393,7 +394,7 @@ server.post(
       }
 
       // Update the request status in the database
-      await updatePayoutRequestStatus(requestId, status);
+      await updatePayoutRequestStatus(requestId, status, rejectionReason);
       return {
         success: true,
         message: `Payout request status updated to ${status}.`,
