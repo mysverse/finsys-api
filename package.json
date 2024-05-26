@@ -14,8 +14,8 @@
     "@types/dotenv-safe": "^8.1.6",
     "@types/node": "^20.12.12",
     "@types/pg": "^8.11.6",
-    "nodemon": "^3.1.0",
-    "tsx": "^4.10.5",
+    "nodemon": "^3.1.1",
+    "tsx": "^4.11.0",
     "typescript": "^5.4.5"
   },
   "dependencies": {
