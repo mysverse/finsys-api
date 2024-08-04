@@ -301,6 +301,15 @@ async function allowedToAccessApplication(
     }
   }
 
+  const groupRank = await noblox.getRankInGroup(groupId, userId);
+  if (groupRank < 1) {
+    return {
+      canView: false,
+      canCreate: false,
+      canEdit: false,
+    };
+  }
+
   for (const group of config.settings.permissionGroups.requesters) {
     const rank = await noblox.getRankInGroup(group.id, userId);
     if (rank >= group.minRank) {
