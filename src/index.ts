@@ -97,6 +97,9 @@ async function payoutRobux(userId: number, amount: number) {
         methods: ["POST"],
         limit: 3,
       },
+      timeout: {
+        request: 10000,
+      },
       json: {
         PayoutType: "FixedAmount",
         Recipients: [
@@ -228,6 +231,9 @@ async function payoutRobux(userId: number, amount: number) {
           retry: {
             methods: ["POST"],
             limit: 10,
+          },
+          timeout: {
+            request: 10000,
           },
           json: {
             PayoutType: "FixedAmount",
@@ -486,8 +492,8 @@ server.get(
 async function bootstrap() {
   await Promise.all([startDB()]);
   const currentUser = await noblox.setCookie(config.credentials.roblox);
-  accountUserId = currentUser.UserID;
-  console.log(`Logged in as ${currentUser.UserName} [${currentUser.UserID}]`);
+  accountUserId = currentUser.id;
+  console.log(`Logged in as ${currentUser.name} [${currentUser.id}]`);
   const address = await server.listen({ port: port });
   await server.ready();
   console.log(`Server listening at ${address}`);
