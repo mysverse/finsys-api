@@ -208,18 +208,22 @@ async function payoutRobux(userId: number, amount: number) {
 
       // Step 5: Retry Payout Request with 2FA Verification
 
+      const encodedMetadata = Buffer.from(
+        JSON.stringify({
+          verificationToken: verificationToken,
+          rememberDevice: false,
+          challengeId: challengeMetadataId,
+          actionType: "Generic",
+        })
+      ).toString("base64");
+
       const finalPayoutHeaders = {
         "Content-Type": "application/json",
         Cookie: `.ROBLOSECURITY=${userCookie}`,
         "X-CSRF-TOKEN": xCsrfToken,
         "rblx-challenge-id": challengeHeaderId,
         "rblx-challenge-type": "twostepverification",
-        "rblx-challenge-metadata": JSON.stringify({
-          verificationToken: verificationToken,
-          rememberDevice: false,
-          challengeId: challengeMetadataId,
-          actionType: "Generic",
-        }),
+        "rblx-challenge-metadata": encodedMetadata,
       };
 
       // fph = finalPayoutHeaders;
