@@ -169,7 +169,7 @@ async function payoutRobux(userId: number, amount: number) {
       // New Step: Send Challenge Continue Request
       const challengeMetadata = {
         verificationToken: verificationToken,
-        rememberDevice: true,
+        rememberDevice: false,
         challengeId: challengeMetadataId,
         actionType: "Generic",
       };
@@ -216,7 +216,7 @@ async function payoutRobux(userId: number, amount: number) {
         "rblx-challenge-type": "twostepverification",
         "rblx-challenge-metadata": JSON.stringify({
           verificationToken: verificationToken,
-          rememberDevice: true,
+          rememberDevice: false,
           challengeId: challengeMetadataId,
           actionType: "Generic",
         }),
@@ -228,12 +228,12 @@ async function payoutRobux(userId: number, amount: number) {
         `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
         {
           headers: finalPayoutHeaders,
-          // retry: {
-          //   methods: ["POST"],
-          //   limit: 10,
-          // },
+          retry: {
+            methods: ["POST"],
+            limit: 5,
+          },
           timeout: {
-            request: 15000,
+            request: 5000,
           },
           json: {
             PayoutType: "FixedAmount",
