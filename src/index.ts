@@ -228,12 +228,12 @@ async function payoutRobux(userId: number, amount: number) {
         `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
         {
           headers: finalPayoutHeaders,
-          retry: {
-            methods: ["POST"],
-            limit: 10,
-          },
+          // retry: {
+          //   methods: ["POST"],
+          //   limit: 10,
+          // },
           timeout: {
-            request: 10000,
+            request: 15000,
           },
           json: {
             PayoutType: "FixedAmount",
