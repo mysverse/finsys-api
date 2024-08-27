@@ -7,7 +7,7 @@ export async function startDB() {
   try {
     console.log("Attempting to connect...");
     // Parsing bigint to integer (consider the limitations of JavaScript number type)
-    types.setTypeParser(20, parseInt);
+    types.setTypeParser(types.builtins.INT8, BigInt);
     await pool.connect();
     console.log("Connected");
   } catch (error) {
@@ -82,6 +82,7 @@ export async function fetchPayoutRequestDetails(requestId: number) {
     `SELECT status, user_id, amount FROM payout_requests WHERE id = $1`,
     [requestId]
   );
+  console.dir(response, { depth: null });
   const request = response.rows[0];
   if (!request || request.status === "approved") {
     throw new Error("Request is either non-existent or already approved");
