@@ -208,12 +208,14 @@ async function payoutRobux(userId: number, amount: number) {
 
       // Step 5: Retry Payout Request with 2FA Verification
 
-      const encodedMetadata = JSON.stringify({
-        verificationToken: verificationToken,
-        rememberDevice: false,
-        challengeId: challengeMetadataId,
-        actionType: "Generic",
-      });
+      const encodedMetadata = Buffer.from(
+        JSON.stringify({
+          verificationToken: verificationToken,
+          rememberDevice: false,
+          challengeId: challengeMetadataId,
+          actionType: "Generic",
+        })
+      ).toString("base64");
 
       const finalPayoutHeaders = {
         "Content-Type": "application/json",
