@@ -101,7 +101,7 @@ async function payoutRobux(userId: number, amount: number) {
         request: 10000,
       },
       json: {
-        PayoutType: "FixedAmount",
+        PayoutType: 1,
         Recipients: [
           {
             recipientId: userId,
@@ -240,7 +240,7 @@ async function payoutRobux(userId: number, amount: number) {
             request: 5000,
           },
           json: {
-            PayoutType: "FixedAmount",
+            PayoutType: 1,
             Recipients: [
               {
                 recipientId: userId,
