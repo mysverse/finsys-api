@@ -105,7 +105,7 @@ async function payoutRobux(userId: number, amount: number) {
         Recipients: [
           {
             recipientId: userId,
-            recipientType: "User",
+            recipientType: 0,
             amount: amount,
           },
         ],
@@ -242,7 +242,7 @@ async function payoutRobux(userId: number, amount: number) {
             Recipients: [
               {
                 recipientId: userId,
-                recipientType: "User",
+                recipientType: 0,
                 amount: amount,
               },
             ],
