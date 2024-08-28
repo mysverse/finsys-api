@@ -167,7 +167,7 @@ async function payoutRobux(userId: number, amount: number) {
       // New Step: Send Challenge Continue Request
       const challengeMetadata = {
         verificationToken: verificationToken,
-        rememberDevice: false,
+        rememberDevice: true,
         challengeId: challengeMetadataId,
         actionType: "Generic",
       };
@@ -208,7 +208,7 @@ async function payoutRobux(userId: number, amount: number) {
       const encodedMetadata = Buffer.from(
         JSON.stringify({
           verificationToken: verificationToken,
-          rememberDevice: false,
+          rememberDevice: true,
           challengeId: challengeMetadataId,
           actionType: "Generic",
         })
