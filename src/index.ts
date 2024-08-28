@@ -89,7 +89,6 @@ async function payoutRobux(userId: number, amount: number) {
     `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
     {
       headers: {
-        "Content-Type": "application/json",
         Cookie: `.ROBLOSECURITY=${userCookie}`,
         "X-CSRF-TOKEN": xCsrfToken,
       },
@@ -140,7 +139,6 @@ async function payoutRobux(userId: number, amount: number) {
       `https://twostepverification.roblox.com/v1/users/${accountUserId}/challenges/authenticator/verify`,
       {
         headers: {
-          "Content-Type": "application/json",
           Cookie: `.ROBLOSECURITY=${userCookie}`,
           "X-CSRF-TOKEN": xCsrfToken,
         },
@@ -181,7 +179,6 @@ async function payoutRobux(userId: number, amount: number) {
             Accept: "*/*",
             Cookie: `.ROBLOSECURITY=${userCookie}`,
             "X-CSRF-TOKEN": xCsrfToken,
-            "Content-Type": "application/json",
           },
           retry: {
             methods: ["POST"],
@@ -208,22 +205,19 @@ async function payoutRobux(userId: number, amount: number) {
 
       // Step 5: Retry Payout Request with 2FA Verification
 
-      const encodedMetadata = Buffer.from(
-        JSON.stringify({
-          verificationToken: verificationToken,
-          rememberDevice: false,
-          challengeId: challengeMetadataId,
-          actionType: "Generic",
-        })
-      ).toString("base64");
+      const encodedMetadata = JSON.stringify({
+        verificationToken: verificationToken,
+        rememberDevice: false,
+        challengeId: challengeMetadataId,
+        actionType: "Generic",
+      });
 
       const finalPayoutHeaders = {
-        "Content-Type": "application/json",
         Cookie: `.ROBLOSECURITY=${userCookie}`,
         "X-CSRF-TOKEN": xCsrfToken,
         "rblx-challenge-id": challengeHeaderId,
-        "rblx-challenge-type": "twostepverification",
         "rblx-challenge-metadata": encodedMetadata,
+        "rblx-challenge-type": "twostepverification",
       };
 
       // fph = finalPayoutHeaders;
