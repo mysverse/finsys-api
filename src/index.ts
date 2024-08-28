@@ -205,12 +205,14 @@ async function payoutRobux(userId: number, amount: number) {
 
       // Step 5: Retry Payout Request with 2FA Verification
 
-      const encodedMetadata = JSON.stringify({
-        verificationToken: verificationToken,
-        rememberDevice: false,
-        challengeId: challengeMetadataId,
-        actionType: "Generic",
-      });
+      const encodedMetadata = Buffer.from(
+        JSON.stringify({
+          verificationToken: verificationToken,
+          rememberDevice: false,
+          challengeId: challengeMetadataId,
+          actionType: "Generic",
+        })
+      ).toString("base64");
 
       const finalPayoutHeaders = {
         Cookie: `.ROBLOSECURITY=${userCookie}`,
@@ -222,7 +224,7 @@ async function payoutRobux(userId: number, amount: number) {
 
       // fph = finalPayoutHeaders;
 
-      return await got.post(
+      const finalResponse = await got.post(
         `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
         {
           headers: finalPayoutHeaders,
@@ -243,8 +245,22 @@ async function payoutRobux(userId: number, amount: number) {
               },
             ],
           },
+          throwHttpErrors: false,
         }
       );
+      if (finalResponse.statusCode === 200) {
+        // Payout successful with 2FA
+        return finalResponse;
+      } else {
+        // Handle other errors
+        console.error("Error with final payout request.");
+        console.error(finalResponse.body);
+        const errorType = extractRobloxErrorReason(finalResponse.body);
+        if (errorType) {
+          throw new Error(`Error with final payout request: ${errorType}`);
+        }
+        throw new Error("Error with final payout request.");
+      }
     } else {
       // Handle 2FA verification failure
       console.error("Two-step verification failed.");
