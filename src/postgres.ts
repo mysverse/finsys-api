@@ -85,7 +85,7 @@ export async function updatePayoutRequestStatus(
         const url = new URL(config.notifierUrl);
         url.searchParams.append("userId", user_id.toString());
         url.searchParams.append("template", "sentral");
-        await fetch(config.notifierUrl);
+        await fetch(url);
       }
     }
   } catch (error) {
