@@ -1,4 +1,5 @@
 import pkg from "pg";
+import config from "./config.js";
 const { Pool, types } = pkg;
 
 const pool = new Pool();
@@ -64,7 +65,8 @@ export async function getPayoutRequestByUser(
 export async function updatePayoutRequestStatus(
   requestId: number,
   status: PayoutStatus,
-  rejection_reason?: string
+  rejection_reason?: string,
+  user_id?: number
 ) {
   if (status === "rejected" && rejection_reason) {
     await pool.query(
@@ -76,6 +78,19 @@ export async function updatePayoutRequestStatus(
       status,
       requestId,
     ]);
+  }
+  try {
+    if (user_id && config.notifierUrl && config.notifierUrl.trim().length > 0) {
+      if (status === "approved" || status === "rejected") {
+        const url = new URL(config.notifierUrl);
+        url.searchParams.append("userId", user_id.toString());
+        url.searchParams.append("template", "sentral");
+        await fetch(config.notifierUrl);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to notify user of payout request status change");
+    console.error(error);
   }
 }
 

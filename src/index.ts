@@ -423,7 +423,12 @@ server.post(
       }
 
       // Update the request status in the database
-      await updatePayoutRequestStatus(requestId, status, rejectionReason);
+      await updatePayoutRequestStatus(
+        requestId,
+        status,
+        rejectionReason,
+        requestDetails.user_id
+      );
       return {
         success: true,
         message: `Payout request status updated to ${status}.`,

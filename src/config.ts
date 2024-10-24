@@ -23,6 +23,7 @@ export default {
     typeof process.env.API_PORT !== "undefined"
       ? parseInt(process.env.API_PORT)
       : 3000,
+  notifierUrl: process.env.NOTIFIER_URL as string,
   settings: {
     permissionGroups: {
       requesters: jsonConfig.requesterGroups,
