@@ -311,6 +311,9 @@ async function allowedToAccessApplication(
   userId: number
 ): Promise<FinsysPermissions> {
   let canCreate = false;
+  let canEdit = false;
+  let canView = false;
+
   const groups = await noblox.getGroups(userId);
 
   function getRankInGroup(groupId: number) {
@@ -321,35 +324,29 @@ async function allowedToAccessApplication(
   for (const group of config.settings.permissionGroups.approvers) {
     const rank = getRankInGroup(group.id);
     if (rank >= group.minRank) {
-      canCreate = true;
+      canView = true;
+      canEdit = true;
       break;
     }
   }
 
-  const rank = getRankInGroup(groupId);
-  if (rank < 1) {
-    return {
-      canView: false,
-      canCreate,
-      canEdit: false,
-    };
-  }
+  const payoutGroupRank = getRankInGroup(groupId);
 
-  for (const group of config.settings.permissionGroups.requesters) {
-    const rank = getRankInGroup(group.id);
-    if (rank >= group.minRank) {
-      return {
-        canView: true,
-        canCreate,
-        canEdit: false,
-      };
+  if (payoutGroupRank > 0) {
+    for (const group of config.settings.permissionGroups.requesters) {
+      const rank = getRankInGroup(group.id);
+      if (rank >= group.minRank) {
+        canView = true;
+        canCreate = true;
+        break;
+      }
     }
   }
 
   return {
-    canView: false,
+    canView,
     canCreate,
-    canEdit: false,
+    canEdit,
   };
 }
 
