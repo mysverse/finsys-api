@@ -310,32 +310,37 @@ interface FinsysPermissions {
 async function allowedToAccessApplication(
   userId: number
 ): Promise<FinsysPermissions> {
+  let canCreate = false;
+  const groups = await noblox.getGroups(userId);
+
+  function getRankInGroup(groupId: number) {
+    const group = groups.find((g) => g.Id === groupId);
+    return group ? group.Rank : 0;
+  }
+
   for (const group of config.settings.permissionGroups.approvers) {
-    const rank = await noblox.getRankInGroup(group.id, userId);
+    const rank = getRankInGroup(group.id);
     if (rank >= group.minRank) {
-      return {
-        canView: true,
-        canCreate: false,
-        canEdit: true,
-      };
+      canCreate = true;
+      break;
     }
   }
 
-  const groupRank = await noblox.getRankInGroup(groupId, userId);
-  if (groupRank < 1) {
+  const rank = getRankInGroup(groupId);
+  if (rank < 1) {
     return {
       canView: false,
-      canCreate: false,
+      canCreate,
       canEdit: false,
     };
   }
 
   for (const group of config.settings.permissionGroups.requesters) {
-    const rank = await noblox.getRankInGroup(group.id, userId);
+    const rank = getRankInGroup(group.id);
     if (rank >= group.minRank) {
       return {
         canView: true,
-        canCreate: true,
+        canCreate,
         canEdit: false,
       };
     }
@@ -343,7 +348,7 @@ async function allowedToAccessApplication(
 
   return {
     canView: false,
-    canCreate: false,
+    canCreate,
     canEdit: false,
   };
 }
