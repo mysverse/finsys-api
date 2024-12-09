@@ -66,18 +66,19 @@ export async function updatePayoutRequestStatus(
   requestId: number,
   status: PayoutStatus,
   rejection_reason?: string,
-  user_id?: number
+  user_id?: number,
+  approver_id?: number
 ) {
   if (status === "rejected" && rejection_reason) {
     await pool.query(
-      `UPDATE ${table_payouts} SET status = $1, rejection_reason = $2 WHERE id = $3`,
-      [status, rejection_reason, requestId]
+      `UPDATE ${table_payouts} SET status = $1, rejection_reason = $2, approver_id = $3 WHERE id = $4`,
+      [status, rejection_reason, approver_id, requestId]
     );
   } else {
-    await pool.query(`UPDATE ${table_payouts} SET status = $1 WHERE id = $2`, [
-      status,
-      requestId,
-    ]);
+    await pool.query(
+      `UPDATE ${table_payouts} SET status = $1, approver_id = $2 WHERE id = $3`,
+      [status, approver_id, requestId]
+    );
   }
   try {
     if (user_id && config.notifierUrl && config.notifierUrl.trim().length > 0) {
@@ -97,7 +98,7 @@ export async function updatePayoutRequestStatus(
 // Function to fetch payout request details if it's not already approved
 export async function fetchPayoutRequestDetails(requestId: number) {
   const response = await pool.query<PayoutRequestData>(
-    `SELECT status, user_id, amount FROM payout_requests WHERE id = $1`,
+    `SELECT status, user_id, amount FROM ${table_payouts} WHERE id = $1`,
     [requestId]
   );
   const request = response.rows[0];
@@ -108,18 +109,46 @@ export async function fetchPayoutRequestDetails(requestId: number) {
 }
 
 // Function to get all pending payout requests
-export async function getAllRequests(): Promise<PayoutRequestData[]> {
-  const response = await pool.query<PayoutRequestData>(
-    `SELECT * FROM ${table_payouts} ORDER BY created_at DESC`
-  );
+export async function getAllRequests(
+  offset?: number,
+  limit?: number
+): Promise<PayoutRequestData[]> {
+  let sql: string = `SELECT * FROM ${table_payouts} ORDER BY created_at DESC`;
+  const params: number[] = [];
+
+  if (limit) {
+    sql += ` LIMIT $${params.length + 1}`;
+    params.push(limit);
+  }
+
+  if (offset) {
+    sql += ` OFFSET $${params.length + 1}`;
+    params.push(offset);
+  }
+
+  const response = await pool.query<PayoutRequestData>(sql, params);
   return response.rows;
 }
 
 // Function to get all pending payout requests for a specific user
-export async function getPayoutRequestsByUser(userId: number) {
-  const response = await pool.query<PayoutRequestData>(
-    `SELECT * FROM payout_requests WHERE user_id = $1 ORDER BY created_at DESC`,
-    [userId]
-  );
+export async function getPayoutRequestsByUser(
+  userId: number,
+  offset?: number,
+  limit?: number
+): Promise<PayoutRequestData[]> {
+  let sql: string = `SELECT * FROM ${table_payouts} WHERE user_id = $1 ORDER BY created_at DESC`;
+  let params: any[] = [userId];
+
+  if (limit) {
+    sql += ` LIMIT $${params.length + 1}`;
+    params.push(limit);
+  }
+
+  if (offset) {
+    sql += ` OFFSET $${params.length + 1}`;
+    params.push(offset);
+  }
+
+  const response = await pool.query<PayoutRequestData>(sql, params);
   return response.rows;
 }

@@ -398,6 +398,7 @@ server.post(
   {
     schema: {
       body: Type.Object({
+        approverId: Type.Optional(Type.Number()),
         requestId: Type.Number(),
         status: Type.Union([
           Type.Literal("pending"),
@@ -410,7 +411,7 @@ server.post(
   },
   async (req, res) => {
     try {
-      const { requestId, status, rejectionReason } = req.body;
+      const { requestId, status, rejectionReason, approverId } = req.body;
 
       // Fetch request details
       const requestDetails = await fetchPayoutRequestDetails(requestId);
@@ -429,8 +430,10 @@ server.post(
         requestId,
         status,
         rejectionReason,
-        requestDetails.user_id
+        requestDetails.user_id,
+        approverId
       );
+
       return {
         success: true,
         message: `Payout request status updated to ${status}.`,
@@ -453,6 +456,8 @@ server.get(
       querystring: Type.Strict(
         Type.Object({
           userId: Type.Optional(Type.Number()),
+          offset: Type.Optional(Type.Number()),
+          limit: Type.Optional(Type.Number()),
         })
       ),
     },
@@ -468,9 +473,13 @@ server.get(
             "FINSYS_NOT_ALLOWED: You must be a member of approved groups to access this feature."
           );
         }
-        requests = await getPayoutRequestsByUser(userId);
+        requests = await getPayoutRequestsByUser(
+          userId,
+          req.query.offset,
+          req.query.limit
+        );
       } else {
-        requests = await getAllRequests();
+        requests = await getAllRequests(req.query.offset, req.query.limit);
       }
 
       return { requests };
