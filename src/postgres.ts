@@ -113,7 +113,7 @@ export async function getAllRequests(
   offset?: number,
   limit?: number
 ): Promise<PayoutRequestData[]> {
-  let sql: string = `SELECT * FROM ${table_payouts} ORDER BY created_at DESC`;
+  let sql: string = `SELECT * FROM ${table_payouts} ORDER BY status = 'pending' DESC, created_at DESC`;
   const params: number[] = [];
 
   if (limit) {
