@@ -354,13 +354,11 @@ server.post(
   "/create-payout",
   {
     schema: {
-      body: Type.Strict(
-        Type.Object({
-          userId: Type.Number(),
-          amount: Type.Number(),
-          reason: Type.String(),
-        })
-      ),
+      body: Type.Object({
+        userId: Type.Number(),
+        amount: Type.Number(),
+        reason: Type.String(),
+      }),
     },
   },
 
@@ -453,13 +451,11 @@ server.get(
   "/pending-requests",
   {
     schema: {
-      querystring: Type.Strict(
-        Type.Object({
-          userId: Type.Optional(Type.Number()),
-          offset: Type.Optional(Type.Number()),
-          limit: Type.Optional(Type.Number()),
-        })
-      ),
+      querystring: Type.Object({
+        userId: Type.Optional(Type.Number()),
+        offset: Type.Optional(Type.Number()),
+        limit: Type.Optional(Type.Number()),
+      }),
     },
   },
   async (req, res) => {
@@ -497,11 +493,9 @@ server.get(
   "/permissions",
   {
     schema: {
-      querystring: Type.Strict(
-        Type.Object({
-          userId: Type.Number(),
-        })
-      ),
+      querystring: Type.Object({
+        userId: Type.Number(),
+      }),
     },
   },
   async (req, res) => {
