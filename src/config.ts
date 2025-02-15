@@ -15,7 +15,7 @@ interface FinsysJsonConfiguration {
 
 // import jsonConfigFile from "../config.json" with { type: "json" };;
 const { default: jsonConfigFile } = await import("../config.json", {
-  assert: { type: "json" },
+  with: { type: "json" },
 });
 
 const jsonConfig: FinsysJsonConfiguration = jsonConfigFile;
