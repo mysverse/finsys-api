@@ -17,6 +17,8 @@ import jsonConfigFile from "../config.json" with { type: "json" };;
 
 const jsonConfig: FinsysJsonConfiguration = jsonConfigFile;
 
+console.log(`Blacklisted user IDs: ${jsonConfig.blacklistedIds?.join(", ")}`);
+
 export default {
   testMode: false,
   seriesIdentifier: process.env.IDENTIFIER,
