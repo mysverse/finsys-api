@@ -24,8 +24,8 @@ importers:
         specifier: ^14.4.6
         version: 14.4.6
       noblox.js:
-        specifier: ^6.1.0
-        version: 6.1.0
+        specifier: ^6.1.1
+        version: 6.1.1
       otplib:
         specifier: ^12.0.1
         version: 12.0.1
@@ -689,8 +689,8 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  noblox.js@6.1.0:
-    resolution: {integrity: sha512-ZcqvXYTVFlZ1Wkir637nnR9Y5DrmFHhDX6Ib263ESeP0ZAqc8m3VNCYIm+9mBlliZIHmjyWGVspk+O+OGynbag==}
+  noblox.js@6.1.1:
+    resolution: {integrity: sha512-pR/GLEaiaOHm9DjRj+sYJ54ulNyUoarRR8A44ce7Ix9saFa54tTwKQVvcIednGnWO/2BaqENP4s1EElZMfJyog==}
     engines: {node: '>=18.18'}
 
   node-fetch@2.7.0:
@@ -1692,7 +1692,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  noblox.js@6.1.0:
+  noblox.js@6.1.1:
     dependencies:
       '@microsoft/signalr': 8.0.7
       chalk: 5.4.1
