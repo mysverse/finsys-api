@@ -66,6 +66,10 @@ function extractRobloxErrorReason(body: string) {
   return response;
 }
 
+function isBlacklisted(userId: number) {
+  return config.blacklistedIds.includes(userId);
+}
+
 async function payoutRobux(userId: number, amount: number) {
   // Step 1: Fetch X-CSRF Token
 
@@ -365,6 +369,12 @@ server.post(
   async (req, res) => {
     try {
       const { userId, amount, reason } = req.body;
+
+      if (isBlacklisted(userId)) {
+        res.status(400);
+        return { error: "User is blacklisted." };
+      }
+
       const existingRequest = await getPayoutRequestByUser(userId);
 
       if (existingRequest) {
@@ -413,6 +423,11 @@ server.post(
 
       // Fetch request details
       const requestDetails = await fetchPayoutRequestDetails(requestId);
+
+      if (isBlacklisted(requestDetails.user_id)) {
+        res.status(400);
+        return { error: "Payout recipient is blacklisted." };
+      }
 
       if (status === "approved") {
         const { user_id, amount } = requestDetails;

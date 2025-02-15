@@ -10,6 +10,7 @@ interface FinsysJsonConfiguration {
   requesterGroups: FinsysJsonConfigurationGroup[];
   approverGroups: FinsysJsonConfigurationGroup[];
   cors: string[];
+  blacklistedIds?: number[];
 }
 
 import jsonConfigFile from "../config.json" with { type: "json" };;
@@ -39,6 +40,7 @@ export default {
         ? parseInt(process.env.ROBLOX_GROUP_ID)
         : 123456,
   },
+  blacklistedIds: jsonConfig.blacklistedIds || [],
   credentials: {
     api: process.env.AUTHENTICATION_KEY as string,
     roblox: process.env.ROBLOSECURITY as string,
