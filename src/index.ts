@@ -403,8 +403,12 @@ server.post(
         };
       }
 
-      await createPayoutRequest(userId, amount, reason);
-      return { success: true, message: "Payout request created successfully." };
+      const response = await createPayoutRequest(userId, amount, reason);
+      return {
+        success: true,
+        message: "Payout request created successfully.",
+        id: response.id,
+      };
     } catch (error) {
       res.status(500);
       return {

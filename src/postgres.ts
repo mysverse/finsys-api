@@ -18,7 +18,7 @@ export async function createPayoutRequest(
   amount: number,
   reason: string
 ) {
-  await prisma.payout_requests.create({
+  return prisma.payout_requests.create({
     data: {
       user_id: handleNumeric(userId),
       amount: handleNumeric(amount),
