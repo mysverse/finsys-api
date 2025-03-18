@@ -11,7 +11,6 @@ import { Type, TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import config from "./config.js";
 
 import {
-  startDB,
   createPayoutRequest,
   getPayoutRequestByUser,
   updatePayoutRequestStatus,
@@ -66,8 +65,8 @@ function extractRobloxErrorReason(body: string) {
   return response;
 }
 
-function isBlacklisted(userId: number) {
-  return config.blacklistedIds.includes(userId);
+function isBlacklisted(userId: number | BigInt) {
+  return config.blacklistedIds.includes(Number(userId));
 }
 
 async function payoutRobux(userId: number, amount: number) {
@@ -433,7 +432,7 @@ server.post(
         const { user_id, amount } = requestDetails;
 
         // Perform the payout
-        await payoutRobux(user_id, amount);
+        await payoutRobux(Number(user_id), Number(amount));
 
         console.log(`Payout of ${amount} Robux to user ${user_id} completed.`);
       }
@@ -443,7 +442,7 @@ server.post(
         requestId,
         status,
         rejectionReason,
-        requestDetails.user_id,
+        Number(requestDetails.user_id),
         approverId
       );
 
@@ -529,7 +528,6 @@ server.get(
 );
 
 async function bootstrap() {
-  await Promise.all([startDB()]);
   const currentUser = await noblox.setCookie(config.credentials.roblox);
   accountUserId = currentUser.id;
   console.log(`Logged in as ${currentUser.name} [${currentUser.id}]`);

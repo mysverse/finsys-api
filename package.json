@@ -15,12 +15,14 @@
     "@types/node": "^22.13.4",
     "@types/pg": "^8.11.11",
     "nodemon": "^3.1.9",
+    "prisma": "^6.5.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
     "@fastify/type-provider-typebox": "^5.1.0",
+    "@prisma/client": "6.5.0",
     "dotenv-safe": "^9.1.0",
     "fastify": "^5.2.1",
     "got": "^14.4.6",
@@ -30,5 +32,11 @@
   },
   "overrides": {
     "@types/responselike": "1.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma"
+    ]
   }
 }
