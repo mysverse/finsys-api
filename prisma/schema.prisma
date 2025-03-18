@@ -13,8 +13,8 @@ model payout_requests {
   amount           BigInt
   reason           String
   status           String    @db.VarChar(15)
-  created_at       DateTime? @default(now()) @db.Timestamp(6)
-  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
   group_id         BigInt?
   category         String?   @db.VarChar(255)
   approver_id      BigInt?
