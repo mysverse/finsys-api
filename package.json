@@ -8,7 +8,7 @@
   "scripts": {
     "start": "pnpm build && node dist/index.js",
     "dev": "tsx watch src/index.ts .env",
-    "build": "tsc"
+    "build": "prisma generate && tsc"
   },
   "devDependencies": {
     "@types/dotenv-safe": "^8.1.6",
