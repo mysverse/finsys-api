@@ -20,6 +20,7 @@ import {
 } from "./postgres.js";
 import { authenticator } from "otplib";
 import got from "got";
+import { payout_requests } from "@prisma/client";
 
 // Variables
 
@@ -285,6 +286,20 @@ async function payoutRobux(userId: number, amount: number) {
   }
 }
 
+server.addHook("onSend", async (request, reply, payload: any) => {
+  try {
+    // Parse the JSON string back into an object
+    const jsonPayload = JSON.parse(payload);
+    // Re-stringify it with the BigInt conversion
+    return JSON.stringify(jsonPayload, (key, value) =>
+      typeof value === "bigint" ? Number(value) : value
+    );
+  } catch (error) {
+    // If parsing fails, return the payload as-is
+    return payload;
+  }
+});
+
 server.addHook(
   "preHandler",
   async (req: FastifyRequest, reply: FastifyReply) => {
@@ -475,7 +490,7 @@ server.get(
   async (req, res) => {
     try {
       const userId = req.query.userId;
-      let requests;
+      let requests: payout_requests[];
       if (userId) {
         const allowed = await allowedToAccessApplication(userId);
         if (!allowed.canView) {
@@ -492,7 +507,7 @@ server.get(
         requests = await getAllRequests(req.query.offset, req.query.limit);
       }
 
-      return { requests };
+      return { requests: JSON.parse(JSON.stringify(requests)) };
     } catch (error) {
       res.status(500);
       return {

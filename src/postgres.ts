@@ -1,7 +1,12 @@
-import { PrismaClient } from "@prisma/client";
+import { payout_requests, PrismaClient } from "@prisma/client";
 import config from "./config.js";
 
 const prisma = new PrismaClient();
+
+// TODO: replace this unsafe method of serialisation
+BigInt.prototype.toJSON = function () {
+  return Number(this);
+};
 
 function handleNumeric(num: number) {
   return num;
@@ -113,7 +118,7 @@ export async function getAllRequests(offset?: number, limit?: number) {
     rawQuery += ` OFFSET ${offset}`;
   }
 
-  const results = await prisma.$queryRawUnsafe(rawQuery);
+  const results = await prisma.$queryRawUnsafe<payout_requests[]>(rawQuery);
   return results;
 }
 
