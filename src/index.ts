@@ -18,7 +18,7 @@ import {
   fetchPayoutRequestDetails,
   getAllRequests,
 } from "./postgres.js";
-import { authenticator } from "otplib";
+import { generateSync } from "otplib";
 import got from "got";
 import { payout_requests } from "@prisma/client";
 
@@ -134,7 +134,7 @@ async function payoutRobux(userId: number, amount: number) {
 
     const challengeMetadataId: string = challengeMetadata["challengeId"];
 
-    const twoFaCode = authenticator.generate(totpSecret);
+    const twoFaCode = generateSync({ secret: totpSecret });
 
     // Step 4: Submit 2FA Verification
     const challengeHeaderId = payoutResponse.headers["rblx-challenge-id"];
