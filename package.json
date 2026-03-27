@@ -12,24 +12,24 @@
   },
   "devDependencies": {
     "@types/dotenv-safe": "^9.1.0",
-    "@types/node": "^22.19.13",
-    "@types/pg": "^8.18.0",
+    "@types/node": "^22.19.15",
+    "@types/pg": "^8.20.0",
     "nodemon": "^3.1.14",
-    "prisma": "^7.4.2",
+    "prisma": "^7.6.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.2"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/type-provider-typebox": "^6.1.0",
-    "@prisma/adapter-pg": "^7.4.2",
-    "@prisma/client": "^7.4.2",
+    "@prisma/adapter-pg": "^7.6.0",
+    "@prisma/client": "^7.6.0",
     "dotenv-safe": "^9.1.0",
-    "fastify": "^5.7.4",
+    "fastify": "^5.8.4",
     "got": "^14.6.6",
     "noblox.js": "^6.2.0",
-    "otplib": "^13.3.0",
-    "pg": "^8.19.0"
+    "otplib": "^13.4.0",
+    "pg": "^8.20.0"
   },
   "overrides": {
     "@types/responselike": "1.0.0"
