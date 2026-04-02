@@ -80,6 +80,7 @@ await server.register(fastifySwagger, {
 
 await server.register(fastifySwaggerUi, {
   routePrefix: "/docs",
+  indexPrefix: config.settings.proxyPrefix,
 });
 
 const maxRobux = config.settings.maxRobux;

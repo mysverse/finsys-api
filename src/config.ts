@@ -44,6 +44,7 @@ export default {
       typeof process.env.ROBLOX_GROUP_ID !== "undefined"
         ? parseInt(process.env.ROBLOX_GROUP_ID)
         : 123456,
+    proxyPrefix: process.env.PROXY_PREFIX || "",
   },
   blacklistedIds: jsonConfig.blacklistedIds || [],
   credentials: {
