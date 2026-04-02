@@ -124,7 +124,7 @@ export async function getAllRequests(offset?: number, limit?: number) {
     Prisma.sql`
       SELECT *
       FROM payout_requests
-      ORDER BY (status = ‘pending’) DESC, created_at DESC
+      ORDER BY CASE WHEN status = ${"pending"} THEN 0 ELSE 1 END, created_at DESC
       LIMIT ${limit ?? 100}
       OFFSET ${offset ?? 0}
     `,
