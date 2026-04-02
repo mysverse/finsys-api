@@ -611,6 +611,125 @@ server.post(
   },
 );
 
+server.post(
+  "/disburse",
+  {
+    schema: {
+      summary: "Create, approve, and disburse a payout in one step",
+      description:
+        "Automatically creates a payout request, approves it, and disburses the Robux to the recipient in a single operation. The user must not be blacklisted, must not have an existing pending request, and the amount must not exceed the configured maximum.",
+      tags: ["Payouts"],
+      body: Type.Object({
+        approverId: Type.Optional(
+          Type.Number({ description: "Roblox user ID of the approver" }),
+        ),
+        userId: Type.Number({ description: "Roblox user ID of the recipient" }),
+        amount: Type.Number({
+          description: "Payout amount in Robux (must be greater than 0)",
+        }),
+        reason: Type.String({ description: "Reason for the payout" }),
+      }),
+      response: {
+        200: Type.Object({
+          success: Type.Boolean(),
+          message: Type.String(),
+          id: Type.Integer({ description: "ID of the created payout request" }),
+        }),
+        400: ErrorResponse,
+        500: ErrorResponse,
+        503: RobloxErrorResponse,
+      },
+    },
+  },
+  async (req, res) => {
+    try {
+      const { userId, amount, reason, approverId } = req.body;
+
+      if (amount <= 0) {
+        res.status(400);
+        return { error: "Payout amount must be greater than 0." };
+      }
+
+      if (isBlacklisted(userId)) {
+        res.status(400);
+        return {
+          error: `User ${userId} is blacklisted and cannot receive payouts.`,
+        };
+      }
+
+      const existingRequest = await getPayoutRequestByUser(userId);
+
+      if (existingRequest) {
+        res.status(400);
+        return {
+          error: `User ${userId} already has a pending payout request. Please wait for it to be processed.`,
+        };
+      }
+
+      if (amount > maxRobux) {
+        res.status(400);
+        return {
+          error: `Payout amount (${amount}) exceeds the maximum allowed amount of ${maxRobux} Robux.`,
+        };
+      }
+
+      // Create the payout request
+      const record = await createPayoutRequest(userId, amount, reason);
+      const requestId = Number(record.id);
+
+      // Disburse via Roblox
+      try {
+        await payoutRobux(userId, amount, req.log);
+      } catch (error) {
+        // Payout failed — reject the request so it doesn't stay pending
+        await updatePayoutRequestStatus(
+          requestId,
+          "rejected",
+          error instanceof Error ? error.message : "Payout disbursement failed",
+          userId,
+          approverId,
+        );
+        throw error;
+      }
+
+      // Mark as approved after successful disbursement
+      await updatePayoutRequestStatus(
+        requestId,
+        "approved",
+        undefined,
+        userId,
+        approverId,
+      );
+
+      req.log.info({ userId, amount, requestId }, "Payout disbursed successfully");
+
+      return {
+        success: true,
+        message: `Payout of ${amount} Robux to user ${userId} disbursed and approved.`,
+        id: requestId,
+      };
+    } catch (error) {
+      req.log.error({ err: error instanceof Error ? error : undefined, userId: req.body.userId }, "Failed to disburse payout");
+      if (error instanceof RobloxError) {
+        const statusCode = error.type === RobloxErrorType.AUTH_EXPIRED ? 503 : 500;
+        res.status(statusCode);
+        return {
+          error: error.message,
+          errorType: error.type,
+          retryable: error.retryable,
+        };
+      }
+      res.status(500);
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while disbursing the payout.",
+      };
+    }
+  },
+);
+
 server.get(
   "/pending-requests",
   {
