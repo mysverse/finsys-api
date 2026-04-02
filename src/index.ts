@@ -4,6 +4,8 @@ config_env();
 
 import fastify, { FastifyReply, FastifyRequest } from "fastify";
 import fastifyCors from "@fastify/cors";
+import fastifySwagger from "@fastify/swagger";
+import fastifySwaggerUi from "@fastify/swagger-ui";
 import noblox from "noblox.js";
 import { Type, TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 
@@ -36,14 +38,46 @@ await server.register(fastifyCors, {
   origin: origins,
 });
 
+await server.register(fastifySwagger, {
+  openapi: {
+    info: {
+      title: "MYSverse FinSys API",
+      description: "Financial system API for managing Roblox group payouts",
+      version: "1.0.0",
+    },
+    components: {
+      securitySchemes: {
+        apiKey: {
+          type: "apiKey",
+          name: "x-api-key",
+          in: "header",
+        },
+      },
+    },
+    tags: [
+      {
+        name: "Payouts",
+        description: "Create, approve/reject, and list payout requests",
+      },
+      {
+        name: "Permissions",
+        description: "Check user permissions for the financial system",
+      },
+    ],
+    security: [{ apiKey: [] }],
+  },
+});
+
+await server.register(fastifySwaggerUi, {
+  routePrefix: "/docs",
+});
+
 const userCookie = config.credentials.roblox;
 const totpSecret = config.credentials.roblox_totp;
 const maxRobux = config.settings.maxRobux;
 
 let accountUserId: number | undefined;
 const groupId = config.settings.groupId;
-
-// let fph: any;
 
 function extractRobloxErrorReason(body: string) {
   let response: string | undefined = undefined;
@@ -114,7 +148,7 @@ async function payoutRobux(userId: number, amount: number) {
         ],
       },
       throwHttpErrors: false,
-    }
+    },
   );
 
   if (payoutResponse.statusCode === 403) {
@@ -129,7 +163,7 @@ async function payoutRobux(userId: number, amount: number) {
       : "";
 
     const challengeMetadata = JSON.parse(
-      Buffer.from(challengeMetadataEncoded, "base64").toString("utf-8")
+      Buffer.from(challengeMetadataEncoded, "base64").toString("utf-8"),
     );
 
     const challengeMetadataId: string = challengeMetadata["challengeId"];
@@ -157,7 +191,7 @@ async function payoutRobux(userId: number, amount: number) {
         },
         throwHttpErrors: false,
         responseType: "json",
-      }
+      },
     );
 
     if (twoFaVerificationResponse.statusCode === 200) {
@@ -194,7 +228,7 @@ async function payoutRobux(userId: number, amount: number) {
             challengeMetadata: JSON.stringify(challengeMetadata),
           },
           throwHttpErrors: false,
-        }
+        },
       );
 
       if (continueResponse.statusCode !== 200) {
@@ -215,7 +249,7 @@ async function payoutRobux(userId: number, amount: number) {
           rememberDevice: true,
           challengeId: challengeMetadataId,
           actionType: "Generic",
-        })
+        }),
       ).toString("base64");
 
       const finalPayoutHeaders = {
@@ -225,8 +259,6 @@ async function payoutRobux(userId: number, amount: number) {
         "rblx-challenge-metadata": encodedMetadata,
         "rblx-challenge-type": "twostepverification",
       };
-
-      // fph = finalPayoutHeaders;
 
       const finalResponse = await got.post(
         `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
@@ -250,7 +282,7 @@ async function payoutRobux(userId: number, amount: number) {
             ],
           },
           throwHttpErrors: false,
-        }
+        },
       );
       if (finalResponse.statusCode === 200) {
         // Payout successful with 2FA
@@ -286,20 +318,6 @@ async function payoutRobux(userId: number, amount: number) {
   }
 }
 
-server.addHook("onSend", async (request, reply, payload: any) => {
-  try {
-    // Parse the JSON string back into an object
-    const jsonPayload = JSON.parse(payload);
-    // Re-stringify it with the BigInt conversion
-    return JSON.stringify(jsonPayload, (key, value) =>
-      typeof value === "bigint" ? Number(value) : value
-    );
-  } catch (error) {
-    // If parsing fails, return the payload as-is
-    return payload;
-  }
-});
-
 server.addHook(
   "preHandler",
   async (req: FastifyRequest, reply: FastifyReply) => {
@@ -314,9 +332,9 @@ server.addHook(
 
     // If the user is not allowed, return a 403
     if (!allowed) {
-      reply.code(403).send({ error: "Forbidden" });
+      return reply.code(403).send({ error: "Forbidden: invalid or missing API key" });
     }
-  }
+  },
 );
 
 interface FinsysPermissions {
@@ -326,7 +344,7 @@ interface FinsysPermissions {
 }
 
 async function allowedToAccessApplication(
-  userId: number
+  userId: number,
 ): Promise<FinsysPermissions> {
   let canCreate = false;
   let canEdit = false;
@@ -368,15 +386,34 @@ async function allowedToAccessApplication(
   };
 }
 
+const ErrorResponse = Type.Object({
+  error: Type.String({ description: "Human-readable error message" }),
+});
+
 server.post(
   "/create-payout",
   {
     schema: {
+      summary: "Create a payout request",
+      description:
+        "Submit a new payout request for a Roblox user. The user must not be blacklisted, must not have an existing pending request, and the amount must not exceed the configured maximum.",
+      tags: ["Payouts"],
       body: Type.Object({
-        userId: Type.Number(),
-        amount: Type.Number(),
-        reason: Type.String(),
+        userId: Type.Number({ description: "Roblox user ID of the recipient" }),
+        amount: Type.Number({
+          description: "Payout amount in Robux (must be greater than 0)",
+        }),
+        reason: Type.String({ description: "Reason for the payout request" }),
       }),
+      response: {
+        200: Type.Object({
+          success: Type.Boolean(),
+          message: Type.String(),
+          id: Type.Integer({ description: "ID of the created payout request" }),
+        }),
+        400: ErrorResponse,
+        500: ErrorResponse,
+      },
     },
   },
 
@@ -384,22 +421,31 @@ server.post(
     try {
       const { userId, amount, reason } = req.body;
 
+      if (amount <= 0) {
+        res.status(400);
+        return { error: "Payout amount must be greater than 0." };
+      }
+
       if (isBlacklisted(userId)) {
         res.status(400);
-        return { error: "User is blacklisted." };
+        return {
+          error: `User ${userId} is blacklisted and cannot receive payouts.`,
+        };
       }
 
       const existingRequest = await getPayoutRequestByUser(userId);
 
       if (existingRequest) {
         res.status(400);
-        return { error: "Existing pending request found for this user." };
+        return {
+          error: `User ${userId} already has a pending payout request. Please wait for it to be processed.`,
+        };
       }
 
       if (amount > maxRobux) {
         res.status(400);
         return {
-          error: `Unable to submit a amount higher than ${maxRobux} Robux.`,
+          error: `Payout amount (${amount}) exceeds the maximum allowed amount of ${maxRobux} Robux.`,
         };
       }
 
@@ -407,88 +453,155 @@ server.post(
       return {
         success: true,
         message: "Payout request created successfully.",
-        id: response.id,
+        id: Number(response.id),
       };
     } catch (error) {
       res.status(500);
       return {
         error:
-          error instanceof Error ? error.message : "Unknown error occurred",
+          error instanceof Error ? error.message : "An unexpected error occurred while creating the payout request.",
       };
     }
-  }
+  },
 );
 
 server.post(
   "/update-payout-status",
   {
     schema: {
+      summary: "Update a payout request status",
+      description:
+        "Approve, reject, or reset a payout request. When approving, the Robux payout is executed automatically via the Roblox API before the status is updated.",
+      tags: ["Payouts"],
       body: Type.Object({
-        approverId: Type.Optional(Type.Number()),
-        requestId: Type.Number(),
-        status: Type.Union([
-          Type.Literal("pending"),
-          Type.Literal("approved"),
-          Type.Literal("rejected"),
-        ]),
-        rejectionReason: Type.Optional(Type.String()),
+        approverId: Type.Optional(
+          Type.Number({ description: "Roblox user ID of the approver" }),
+        ),
+        requestId: Type.Number({ description: "ID of the payout request" }),
+        status: Type.Union(
+          [
+            Type.Literal("pending"),
+            Type.Literal("approved"),
+            Type.Literal("rejected"),
+          ],
+          { description: "New status for the payout request" },
+        ),
+        rejectionReason: Type.Optional(
+          Type.String({
+            description: "Required when rejecting a request",
+          }),
+        ),
       }),
+      response: {
+        200: Type.Object({
+          success: Type.Boolean(),
+          message: Type.String(),
+        }),
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+      },
     },
   },
   async (req, res) => {
     try {
       const { requestId, status, rejectionReason, approverId } = req.body;
 
-      // Fetch request details
-      const requestDetails = await fetchPayoutRequestDetails(requestId);
+      let requestDetails;
+      try {
+        requestDetails = await fetchPayoutRequestDetails(requestId);
+      } catch {
+        res.status(404);
+        return {
+          error: `Payout request ${requestId} not found or has already been approved.`,
+        };
+      }
 
       if (isBlacklisted(requestDetails.user_id)) {
         res.status(400);
-        return { error: "Payout recipient is blacklisted." };
+        return {
+          error: `Payout recipient (user ${requestDetails.user_id}) is blacklisted and cannot receive payouts.`,
+        };
       }
 
       if (status === "approved") {
         const { user_id, amount } = requestDetails;
-
-        // Perform the payout
         await payoutRobux(Number(user_id), Number(amount));
-
         console.log(`Payout of ${amount} Robux to user ${user_id} completed.`);
       }
 
-      // Update the request status in the database
       await updatePayoutRequestStatus(
         requestId,
         status,
         rejectionReason,
         Number(requestDetails.user_id),
-        approverId
+        approverId,
       );
 
       return {
         success: true,
-        message: `Payout request status updated to ${status}.`,
+        message: `Payout request ${requestId} status updated to '${status}'.`,
       };
     } catch (error) {
       console.error(error);
       res.status(500);
       return {
         error:
-          error instanceof Error ? error.message : "Unknown error occurred",
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while updating the payout request.",
       };
     }
-  }
+  },
 );
 
 server.get(
   "/pending-requests",
   {
     schema: {
+      summary: "List payout requests",
+      description:
+        "Retrieve payout requests, ordered with pending requests first. When a userId is provided, only that user's requests are returned (requires view permission). Without a userId, all requests are returned.",
+      tags: ["Payouts"],
       querystring: Type.Object({
-        userId: Type.Optional(Type.Number()),
-        offset: Type.Optional(Type.Number()),
-        limit: Type.Optional(Type.Number()),
+        userId: Type.Optional(
+          Type.Number({
+            description:
+              "Filter by Roblox user ID. When provided, permission checks are enforced.",
+          }),
+        ),
+        offset: Type.Optional(
+          Type.Number({ description: "Number of records to skip (pagination)" }),
+        ),
+        limit: Type.Optional(
+          Type.Number({ description: "Maximum number of records to return" }),
+        ),
       }),
+      response: {
+        200: Type.Object({
+          requests: Type.Array(
+            Type.Object({
+              id: Type.Integer(),
+              user_id: Type.Integer(),
+              amount: Type.Integer(),
+              reason: Type.String(),
+              status: Type.String(),
+              created_at: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+              updated_at: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+              group_id: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+              category: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+              approver_id: Type.Optional(
+                Type.Union([Type.Integer(), Type.Null()]),
+              ),
+              rejection_reason: Type.Optional(
+                Type.Union([Type.String(), Type.Null()]),
+              ),
+            }),
+          ),
+        }),
+        403: ErrorResponse,
+        500: ErrorResponse,
+      },
     },
   },
   async (req, res) => {
@@ -498,14 +611,16 @@ server.get(
       if (userId) {
         const allowed = await allowedToAccessApplication(userId);
         if (!allowed.canView) {
-          throw new Error(
-            "FINSYS_NOT_ALLOWED: You must be a member of approved groups to access this feature."
-          );
+          res.status(403);
+          return {
+            error:
+              "You must be a member of an approved group to access payout requests.",
+          };
         }
         requests = await getPayoutRequestsByUser(
           userId,
           req.query.offset,
-          req.query.limit
+          req.query.limit,
         );
       } else {
         requests = await getAllRequests(req.query.offset, req.query.limit);
@@ -516,19 +631,33 @@ server.get(
       res.status(500);
       return {
         error:
-          error instanceof Error ? error.message : "Unknown error occurred",
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while fetching payout requests.",
       };
     }
-  }
+  },
 );
 
 server.get(
   "/permissions",
   {
     schema: {
+      summary: "Check user permissions",
+      description:
+        "Check what financial system actions a user is allowed to perform based on their Roblox group memberships.",
+      tags: ["Permissions"],
       querystring: Type.Object({
-        userId: Type.Number(),
+        userId: Type.Number({ description: "Roblox user ID to check permissions for" }),
       }),
+      response: {
+        200: Type.Object({
+          canView: Type.Boolean({ description: "Whether the user can view payout requests" }),
+          canCreate: Type.Boolean({ description: "Whether the user can create payout requests" }),
+          canEdit: Type.Boolean({ description: "Whether the user can approve or reject payout requests" }),
+        }),
+        500: ErrorResponse,
+      },
     },
   },
   async (req, res) => {
@@ -540,10 +669,12 @@ server.get(
       res.status(500);
       return {
         error:
-          error instanceof Error ? error.message : "Unknown error occurred",
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while checking permissions.",
       };
     }
-  }
+  },
 );
 
 async function bootstrap() {

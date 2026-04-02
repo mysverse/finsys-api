@@ -1,4 +1,4 @@
-import { payout_requests, PrismaClient } from "@prisma/client";
+import { payout_requests, Prisma, PrismaClient } from "@prisma/client";
 import config from "./config.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -109,21 +109,15 @@ export async function fetchPayoutRequestDetails(requestId: number) {
 
 // Get all payout requests ordered with pending ones first and then by created_at (using a raw query)
 export async function getAllRequests(offset?: number, limit?: number) {
-  // Because the ordering "ORDER BY (status = 'pending') DESC, created_at DESC" isn’t directly supported,
-  // we fall back to a raw query.
-  let rawQuery = `
-    SELECT *
-    FROM payout_requests
-    ORDER BY (status = 'pending') DESC, created_at DESC
-  `;
-  if (limit) {
-    rawQuery += ` LIMIT ${limit}`;
-  }
-  if (offset) {
-    rawQuery += ` OFFSET ${offset}`;
-  }
-
-  const results = await prisma.$queryRawUnsafe<payout_requests[]>(rawQuery);
+  const results = await prisma.$queryRaw<payout_requests[]>(
+    Prisma.sql`
+      SELECT *
+      FROM payout_requests
+      ORDER BY (status = ‘pending’) DESC, created_at DESC
+      LIMIT ${limit ?? 100}
+      OFFSET ${offset ?? 0}
+    `,
+  );
   return results;
 }
 
