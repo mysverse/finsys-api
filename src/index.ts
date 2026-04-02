@@ -23,6 +23,12 @@ import {
 import { generateSync } from "otplib";
 import got from "got";
 import { payout_requests } from "@prisma/client";
+import {
+  RobloxSession,
+  RobloxError,
+  RobloxErrorType,
+  classifyHttpError,
+} from "./roblox.js";
 
 // Variables
 
@@ -63,6 +69,10 @@ await server.register(fastifySwagger, {
         name: "Permissions",
         description: "Check user permissions for the financial system",
       },
+      {
+        name: "System",
+        description: "Health checks and administrative operations",
+      },
     ],
     security: [{ apiKey: [] }],
   },
@@ -72,62 +82,37 @@ await server.register(fastifySwaggerUi, {
   routePrefix: "/docs",
 });
 
-const userCookie = config.credentials.roblox;
-const totpSecret = config.credentials.roblox_totp;
 const maxRobux = config.settings.maxRobux;
-
-let accountUserId: number | undefined;
 const groupId = config.settings.groupId;
 
-function extractRobloxErrorReason(body: string) {
-  let response: string | undefined = undefined;
-  try {
-    const content = JSON.parse(body);
-    if (content) {
-      const errors = content.errors;
-      if (errors && Array.isArray(errors)) {
-        for (const { code, message, userFacingMessage } of errors) {
-          if (message) {
-            response = message;
-            break;
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error(error);
-  }
-  return response;
-}
+let robloxSession!: RobloxSession;
 
 function isBlacklisted(userId: number | BigInt) {
   return config.blacklistedIds.includes(Number(userId));
 }
 
 async function payoutRobux(userId: number, amount: number) {
-  // Step 1: Fetch X-CSRF Token
-
-  const csrfResponse = await got.post("https://auth.roblox.com/v2/logout", {
-    headers: { Cookie: `.ROBLOSECURITY=${userCookie}` },
-    retry: {
-      methods: ["POST"],
-      limit: 3,
-    },
-    throwHttpErrors: false,
-  });
-
-  const xCsrfToken = csrfResponse.headers["x-csrf-token"];
-
-  if (!xCsrfToken) {
-    throw new Error("Unable to get CSRF token!");
+  // Pre-flight: abort early if session is known to be unhealthy
+  if (!robloxSession.isHealthy()) {
+    throw new RobloxError(
+      RobloxErrorType.AUTH_EXPIRED,
+      "Roblox session is not healthy. Payout aborted. Replace the cookie and retry.",
+      undefined,
+      false,
+    );
   }
+
+  const cookie = robloxSession.getCookie();
+
+  // Step 1: Fetch X-CSRF Token via noblox.js (cached internally)
+  const xCsrfToken = await robloxSession.getCsrfToken();
 
   // Step 2: Initial Payout Request
   const payoutResponse = await got.post(
     `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
     {
       headers: {
-        Cookie: `.ROBLOSECURITY=${userCookie}`,
+        Cookie: `.ROBLOSECURITY=${cookie}`,
         "X-CSRF-TOKEN": xCsrfToken,
       },
       retry: {
@@ -151,176 +136,200 @@ async function payoutRobux(userId: number, amount: number) {
     },
   );
 
-  if (payoutResponse.statusCode === 403) {
-    // Step 3: Generate 2FA Code using TOTP
-    const challengeMetadataEncodedHeader =
-      payoutResponse.headers["rblx-challenge-metadata"];
+  if (payoutResponse.statusCode === 200) {
+    return payoutResponse;
+  }
 
-    const challengeMetadataEncoded = challengeMetadataEncodedHeader
-      ? Array.isArray(challengeMetadataEncodedHeader)
-        ? challengeMetadataEncodedHeader[0]
-        : challengeMetadataEncodedHeader
-      : "";
+  // Classify non-200 responses
+  const initialError = classifyHttpError(
+    payoutResponse.statusCode,
+    payoutResponse.headers,
+    payoutResponse.body,
+    "Initial payout request",
+  );
 
-    const challengeMetadata = JSON.parse(
-      Buffer.from(challengeMetadataEncoded, "base64").toString("utf-8"),
-    );
+  // If classifyHttpError returns null, it's a 2FA challenge — proceed with the flow
+  if (initialError !== null) {
+    if (initialError.type === RobloxErrorType.AUTH_EXPIRED) {
+      robloxSession.markUnhealthy();
+    }
+    console.error("Error with initial payout request.", payoutResponse.body);
+    throw initialError;
+  }
 
-    const challengeMetadataId: string = challengeMetadata["challengeId"];
+  // Step 3: 2FA challenge detected — extract metadata
+  const challengeMetadataEncodedHeader =
+    payoutResponse.headers["rblx-challenge-metadata"];
 
-    const twoFaCode = generateSync({ secret: totpSecret });
+  const challengeMetadataEncoded = challengeMetadataEncodedHeader
+    ? Array.isArray(challengeMetadataEncodedHeader)
+      ? challengeMetadataEncodedHeader[0]
+      : challengeMetadataEncodedHeader
+    : "";
 
-    // Step 4: Submit 2FA Verification
-    const challengeHeaderId = payoutResponse.headers["rblx-challenge-id"];
+  const challengeMetadata = JSON.parse(
+    Buffer.from(challengeMetadataEncoded, "base64").toString("utf-8"),
+  );
 
-    const twoFaVerificationResponse = await got.post<any>(
-      `https://twostepverification.roblox.com/v1/users/${accountUserId}/challenges/authenticator/verify`,
-      {
-        headers: {
-          Cookie: `.ROBLOSECURITY=${userCookie}`,
-          "X-CSRF-TOKEN": xCsrfToken,
-        },
-        retry: {
-          methods: ["POST"],
-          limit: 3,
-        },
-        json: {
-          challengeId: challengeMetadataId,
-          actionType: "Generic",
-          code: twoFaCode,
-        },
-        throwHttpErrors: false,
-        responseType: "json",
+  const challengeMetadataId: string = challengeMetadata["challengeId"];
+
+  const twoFaCode = generateSync({
+    secret: robloxSession.getTotpSecret(),
+  });
+
+  // Step 4: Submit 2FA Verification
+  const challengeHeaderId = payoutResponse.headers["rblx-challenge-id"];
+
+  const twoFaVerificationResponse = await got.post<any>(
+    `https://twostepverification.roblox.com/v1/users/${robloxSession.getUserId()}/challenges/authenticator/verify`,
+    {
+      headers: {
+        Cookie: `.ROBLOSECURITY=${cookie}`,
+        "X-CSRF-TOKEN": xCsrfToken,
       },
-    );
-
-    if (twoFaVerificationResponse.statusCode === 200) {
-      const verificationToken =
-        twoFaVerificationResponse.body?.verificationToken;
-
-      if (!verificationToken) {
-        throw new Error("Missing verification token");
-      }
-
-      // New Step: Send Challenge Continue Request
-      const challengeMetadata = {
-        verificationToken: verificationToken,
-        rememberDevice: true,
+      retry: {
+        methods: ["POST"],
+        limit: 3,
+      },
+      json: {
         challengeId: challengeMetadataId,
         actionType: "Generic",
-      };
+        code: twoFaCode,
+      },
+      throwHttpErrors: false,
+      responseType: "json",
+    },
+  );
 
-      const continueResponse = await got.post(
-        "https://apis.roblox.com/challenge/v1/continue",
-        {
-          headers: {
-            Accept: "*/*",
-            Cookie: `.ROBLOSECURITY=${userCookie}`,
-            "X-CSRF-TOKEN": xCsrfToken,
-          },
-          retry: {
-            methods: ["POST"],
-            limit: 3,
-          },
-          json: {
-            challengeId: challengeHeaderId,
-            challengeType: "twostepverification",
-            challengeMetadata: JSON.stringify(challengeMetadata),
-          },
-          throwHttpErrors: false,
-        },
-      );
+  if (twoFaVerificationResponse.statusCode !== 200) {
+    console.error(
+      "Two-step verification failed.",
+      twoFaVerificationResponse.body,
+    );
+    throw new RobloxError(
+      RobloxErrorType.TWO_FA_FAILED,
+      `Two-step verification failed: ${JSON.stringify(twoFaVerificationResponse.body)}`,
+      twoFaVerificationResponse.statusCode,
+    );
+  }
 
-      if (continueResponse.statusCode !== 200) {
-        console.error("Challenge continuation failed.");
-        console.error(continueResponse);
-        const errorType = extractRobloxErrorReason(continueResponse.body);
-        if (errorType) {
-          throw new Error(`Challenge continuation failed: ${errorType}`);
-        }
-        throw new Error("Challenge continuation failed.");
-      }
+  const verificationToken =
+    twoFaVerificationResponse.body?.verificationToken;
 
-      // Step 5: Retry Payout Request with 2FA Verification
+  if (!verificationToken) {
+    throw new RobloxError(
+      RobloxErrorType.TWO_FA_FAILED,
+      "Missing verification token in 2FA response",
+    );
+  }
 
-      const encodedMetadata = Buffer.from(
-        JSON.stringify({
-          verificationToken: verificationToken,
-          rememberDevice: true,
-          challengeId: challengeMetadataId,
-          actionType: "Generic",
-        }),
-      ).toString("base64");
+  // Step 5: Send Challenge Continue Request
+  const continueMetadata = {
+    verificationToken: verificationToken,
+    rememberDevice: true,
+    challengeId: challengeMetadataId,
+    actionType: "Generic",
+  };
 
-      const finalPayoutHeaders = {
-        Cookie: `.ROBLOSECURITY=${userCookie}`,
+  const continueResponse = await got.post(
+    "https://apis.roblox.com/challenge/v1/continue",
+    {
+      headers: {
+        Accept: "*/*",
+        Cookie: `.ROBLOSECURITY=${cookie}`,
+        "X-CSRF-TOKEN": xCsrfToken,
+      },
+      retry: {
+        methods: ["POST"],
+        limit: 3,
+      },
+      json: {
+        challengeId: challengeHeaderId,
+        challengeType: "twostepverification",
+        challengeMetadata: JSON.stringify(continueMetadata),
+      },
+      throwHttpErrors: false,
+    },
+  );
+
+  if (continueResponse.statusCode !== 200) {
+    console.error("Challenge continuation failed.", continueResponse.body);
+    const continueError = classifyHttpError(
+      continueResponse.statusCode,
+      continueResponse.headers,
+      continueResponse.body,
+      "Challenge continuation",
+    );
+    throw continueError ?? new RobloxError(
+      RobloxErrorType.TWO_FA_FAILED,
+      "Challenge continuation failed.",
+      continueResponse.statusCode,
+    );
+  }
+
+  // Step 6: Retry Payout Request with 2FA Verification
+  const encodedMetadata = Buffer.from(
+    JSON.stringify(continueMetadata),
+  ).toString("base64");
+
+  const finalResponse = await got.post(
+    `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
+    {
+      headers: {
+        Cookie: `.ROBLOSECURITY=${cookie}`,
         "X-CSRF-TOKEN": xCsrfToken,
         "rblx-challenge-id": challengeHeaderId,
         "rblx-challenge-metadata": encodedMetadata,
         "rblx-challenge-type": "twostepverification",
-      };
+      },
+      retry: {
+        methods: ["POST"],
+        limit: 5,
+      },
+      timeout: {
+        request: 5000,
+      },
+      json: {
+        PayoutType: 1,
+        Recipients: [
+          {
+            recipientId: userId,
+            recipientType: 0,
+            amount: amount,
+          },
+        ],
+      },
+      throwHttpErrors: false,
+    },
+  );
 
-      const finalResponse = await got.post(
-        `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
-        {
-          headers: finalPayoutHeaders,
-          retry: {
-            methods: ["POST"],
-            limit: 5,
-          },
-          timeout: {
-            request: 5000,
-          },
-          json: {
-            PayoutType: 1,
-            Recipients: [
-              {
-                recipientId: userId,
-                recipientType: 0,
-                amount: amount,
-              },
-            ],
-          },
-          throwHttpErrors: false,
-        },
-      );
-      if (finalResponse.statusCode === 200) {
-        // Payout successful with 2FA
-        return finalResponse;
-      } else {
-        // Handle other errors
-        console.error("Error with final payout request.");
-        console.error(finalResponse.body);
-        const errorType = extractRobloxErrorReason(finalResponse.body);
-        if (errorType) {
-          throw new Error(`Error with final payout request: ${errorType}`);
-        }
-        throw new Error("Error with final payout request.");
-      }
-    } else {
-      // Handle 2FA verification failure
-      console.error("Two-step verification failed.");
-      console.error(twoFaVerificationResponse.body);
-      throw new Error(JSON.stringify(twoFaVerificationResponse.body));
-    }
-  } else if (payoutResponse.statusCode === 200) {
-    // Payout successful without 2FA
-    return payoutResponse;
-  } else {
-    // Handle other errors
-    console.error("Error with initial payout request.");
-    console.error(payoutResponse.body);
-    const errorType = extractRobloxErrorReason(payoutResponse.body);
-    if (errorType) {
-      throw new Error(`Error with initial payout request: ${errorType}`);
-    }
-    throw new Error("Error with initial payout request.");
+  if (finalResponse.statusCode === 200) {
+    return finalResponse;
   }
+
+  console.error("Error with final payout request.", finalResponse.body);
+  const finalError = classifyHttpError(
+    finalResponse.statusCode,
+    finalResponse.headers,
+    finalResponse.body,
+    "Final payout request",
+  );
+  if (finalError?.type === RobloxErrorType.AUTH_EXPIRED) {
+    robloxSession.markUnhealthy();
+  }
+  throw finalError ?? new RobloxError(
+    RobloxErrorType.ROBLOX_API_ERROR,
+    "Error with final payout request.",
+    finalResponse.statusCode,
+  );
 }
 
 server.addHook(
   "preHandler",
   async (req: FastifyRequest, reply: FastifyReply) => {
+    // Skip auth for public endpoints
+    if (req.url === "/health" || req.url.startsWith("/docs")) return;
+
     const { headers } = req;
 
     // Take user from the header, in a real world scenario this would be a JWT token
@@ -388,6 +397,12 @@ async function allowedToAccessApplication(
 
 const ErrorResponse = Type.Object({
   error: Type.String({ description: "Human-readable error message" }),
+});
+
+const RobloxErrorResponse = Type.Object({
+  error: Type.String({ description: "Human-readable error message" }),
+  errorType: Type.String({ description: "Classified error type" }),
+  retryable: Type.Boolean({ description: "Whether the operation can be retried" }),
 });
 
 server.post(
@@ -500,6 +515,7 @@ server.post(
         400: ErrorResponse,
         404: ErrorResponse,
         500: ErrorResponse,
+        503: RobloxErrorResponse,
       },
     },
   },
@@ -544,6 +560,15 @@ server.post(
       };
     } catch (error) {
       console.error(error);
+      if (error instanceof RobloxError) {
+        const statusCode = error.type === RobloxErrorType.AUTH_EXPIRED ? 503 : 500;
+        res.status(statusCode);
+        return {
+          error: error.message,
+          errorType: error.type,
+          retryable: error.retryable,
+        };
+      }
       res.status(500);
       return {
         error:
@@ -677,10 +702,87 @@ server.get(
   },
 );
 
+server.get(
+  "/health",
+  {
+    schema: {
+      summary: "Service health check",
+      description:
+        "Returns the health status of the service including Roblox session validity. This endpoint does not require authentication.",
+      tags: ["System"],
+      response: {
+        200: Type.Object({
+          authenticated: Type.Boolean({
+            description: "Whether the Roblox session is currently valid",
+          }),
+          userId: Type.Union([Type.Number(), Type.Null()]),
+          userName: Type.Union([Type.String(), Type.Null()]),
+          lastHealthCheck: Type.Union([Type.String(), Type.Null()]),
+          healthy: Type.Boolean({
+            description: "Overall health status of the service",
+          }),
+          uptime: Type.Number({ description: "Server uptime in seconds" }),
+        }),
+      },
+    },
+  },
+  async () => {
+    return robloxSession.getHealthStatus();
+  },
+);
+
+server.post(
+  "/admin/refresh-cookie",
+  {
+    schema: {
+      summary: "Replace the Roblox session cookie",
+      description:
+        "Hot-swap the Roblox cookie without restarting the server. Validates the new cookie and verifies group membership before accepting it. Does not update the .env file.",
+      tags: ["System"],
+      body: Type.Object({
+        cookie: Type.String({ description: "New ROBLOSECURITY cookie value" }),
+      }),
+      response: {
+        200: Type.Object({
+          success: Type.Boolean(),
+          message: Type.String(),
+          userId: Type.Number(),
+          userName: Type.String(),
+        }),
+        400: ErrorResponse,
+        500: ErrorResponse,
+      },
+    },
+  },
+  async (req, res) => {
+    try {
+      await robloxSession.reinitialize(req.body.cookie, groupId);
+      return {
+        success: true,
+        message: "Cookie replaced and validated successfully.",
+        userId: robloxSession.getUserId(),
+        userName: robloxSession.getHealthStatus().userName!,
+      };
+    } catch (error) {
+      res.status(error instanceof RobloxError ? 400 : 500);
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to reinitialize session with the provided cookie.",
+      };
+    }
+  },
+);
+
 async function bootstrap() {
-  const currentUser = await noblox.setCookie(config.credentials.roblox);
-  accountUserId = currentUser.id;
-  console.log(`Logged in as ${currentUser.name} [${currentUser.id}]`);
+  robloxSession = new RobloxSession(
+    config.credentials.roblox,
+    config.credentials.roblox_totp,
+  );
+  await robloxSession.init(groupId);
+  robloxSession.startHealthCheck();
+
   const address = await server.listen({ port: port });
   await server.ready();
   console.log(`Server listening at ${address}`);
