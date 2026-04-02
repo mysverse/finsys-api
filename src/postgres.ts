@@ -1,7 +1,14 @@
 import { payout_requests, Prisma, PrismaClient } from "@prisma/client";
+import type { FastifyBaseLogger } from "fastify";
 import config from "./config.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+let log: FastifyBaseLogger | undefined;
+
+export function setLogger(logger: FastifyBaseLogger) {
+  log = logger;
+}
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -23,6 +30,7 @@ export async function createPayoutRequest(
   amount: number,
   reason: string
 ) {
+  log?.debug({ userId, amount }, "Creating payout request");
   return prisma.payout_requests.create({
     data: {
       user_id: handleNumeric(userId),
@@ -53,6 +61,7 @@ export async function updatePayoutRequestStatus(
   user_id?: number,
   approver_id?: number
 ) {
+  log?.debug({ requestId, status, approverId: approver_id }, "Updating payout request status");
   if (status === "rejected" && rejection_reason) {
     await prisma.payout_requests.update({
       where: { id: handleNumeric(requestId) },
@@ -85,8 +94,10 @@ export async function updatePayoutRequestStatus(
       await fetch(url.toString());
     }
   } catch (error) {
-    console.error("Failed to notify user of payout request status change");
-    console.error(error);
+    log?.error(
+      { err: error instanceof Error ? error : undefined, userId: user_id, status },
+      "Failed to notify user of payout request status change",
+    );
   }
 }
 

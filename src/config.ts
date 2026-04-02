@@ -20,8 +20,6 @@ const { default: jsonConfigFile } = await import("../config.json", {
 
 const jsonConfig: FinsysJsonConfiguration = jsonConfigFile;
 
-console.log(`Blacklisted user IDs: ${jsonConfig.blacklistedIds?.join(", ")}`);
-
 export default {
   testMode: false,
   seriesIdentifier: process.env.IDENTIFIER,

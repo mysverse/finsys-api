@@ -1,4 +1,5 @@
 import noblox from "noblox.js";
+import type { FastifyBaseLogger } from "fastify";
 
 // Error classification
 
@@ -128,6 +129,7 @@ export interface HealthStatus {
 export class RobloxSession {
   private cookie: string;
   private totpSecret: string;
+  private log: FastifyBaseLogger;
   private userId: number | undefined;
   private userName: string | undefined;
   private groupId: number | undefined;
@@ -136,9 +138,10 @@ export class RobloxSession {
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
   private startTime = Date.now();
 
-  constructor(cookie: string, totpSecret: string) {
+  constructor(cookie: string, totpSecret: string, log: FastifyBaseLogger) {
     this.cookie = cookie;
     this.totpSecret = totpSecret;
+    this.log = log;
   }
 
   async init(groupId: number): Promise<void> {
@@ -171,15 +174,17 @@ export class RobloxSession {
     try {
       await noblox.getGroupFunds(groupId);
     } catch {
-      console.warn(
-        `Warning: Unable to read group funds for group ${groupId}. The account may lack economy permissions.`,
+      this.log.warn(
+        { groupId },
+        "Unable to read group funds; account may lack economy permissions",
       );
     }
 
     this.healthy = true;
     this.lastHealthCheck = Date.now();
-    console.log(
-      `Payout account verified: ${this.userName} [${this.userId}], rank ${rank} in group ${groupId}`,
+    this.log.info(
+      { userName: this.userName, userId: this.userId, rank, groupId },
+      "Payout account verified",
     );
   }
 
@@ -207,8 +212,8 @@ export class RobloxSession {
 
   markUnhealthy(): void {
     this.healthy = false;
-    console.error(
-      "ALERT: Roblox session marked unhealthy! Payouts will fail until the cookie is replaced.",
+    this.log.error(
+      "Roblox session marked unhealthy; payouts will fail until cookie is replaced",
     );
   }
 
@@ -221,8 +226,9 @@ export class RobloxSession {
     } catch (error) {
       if (isNetworkError(error)) {
         // Transient network issue — don't change health status
-        console.warn(
-          "Health check: network error reaching Roblox API, keeping current health status.",
+        this.log.warn(
+          { err: error instanceof Error ? error : undefined },
+          "Health check: network error reaching Roblox API, keeping current health status",
         );
         throw new RobloxError(
           RobloxErrorType.NETWORK_ERROR,
@@ -267,8 +273,8 @@ export class RobloxSession {
       try {
         const valid = await this.validateSession();
         if (!valid) {
-          console.error(
-            "ALERT: Roblox session has expired! Payouts will fail until cookie is replaced.",
+          this.log.error(
+            "Roblox session has expired; payouts will fail until cookie is replaced",
           );
         }
       } catch {

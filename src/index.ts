@@ -2,7 +2,7 @@
 import { config as config_env } from "dotenv-safe";
 config_env();
 
-import fastify, { FastifyReply, FastifyRequest } from "fastify";
+import fastify, { FastifyBaseLogger, FastifyReply, FastifyRequest } from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
@@ -19,6 +19,7 @@ import {
   getPayoutRequestsByUser,
   fetchPayoutRequestDetails,
   getAllRequests,
+  setLogger,
 } from "./postgres.js";
 import { generateSync } from "otplib";
 import got from "got";
@@ -34,7 +35,28 @@ import {
 
 const server = fastify({
   trustProxy: true,
+  logger: {
+    level: process.env.LOG_LEVEL || "info",
+    serializers: {
+      req(request) {
+        return {
+          method: request.method,
+          url: request.url,
+          hostname: request.hostname,
+          remoteAddress: request.ip,
+        };
+      },
+    },
+    ...(process.env.NODE_ENV === "development" && {
+      transport: {
+        target: "pino-pretty",
+        options: { translateTime: "HH:MM:ss Z", ignore: "pid,hostname" },
+      },
+    }),
+  },
 }).withTypeProvider<TypeBoxTypeProvider>();
+
+setLogger(server.log);
 
 const port: number = config.port;
 
@@ -92,7 +114,7 @@ function isBlacklisted(userId: number | BigInt) {
   return config.blacklistedIds.includes(Number(userId));
 }
 
-async function payoutRobux(userId: number, amount: number) {
+async function payoutRobux(userId: number, amount: number, log: FastifyBaseLogger) {
   // Pre-flight: abort early if session is known to be unhealthy
   if (!robloxSession.isHealthy()) {
     throw new RobloxError(
@@ -106,9 +128,11 @@ async function payoutRobux(userId: number, amount: number) {
   const cookie = robloxSession.getCookie();
 
   // Step 1: Fetch X-CSRF Token via noblox.js (cached internally)
+  log.trace({ userId, amount }, "Payout step 1: fetching CSRF token");
   const xCsrfToken = await robloxSession.getCsrfToken();
 
   // Step 2: Initial Payout Request
+  log.trace({ userId, amount }, "Payout step 2: sending initial payout request");
   const payoutResponse = await got.post(
     `https://groups.roblox.com/v1/groups/${groupId}/payouts`,
     {
@@ -138,6 +162,7 @@ async function payoutRobux(userId: number, amount: number) {
   );
 
   if (payoutResponse.statusCode === 200) {
+    log.debug({ userId, amount }, "Payout completed without 2FA challenge");
     return payoutResponse;
   }
 
@@ -154,11 +179,12 @@ async function payoutRobux(userId: number, amount: number) {
     if (initialError.type === RobloxErrorType.AUTH_EXPIRED) {
       robloxSession.markUnhealthy();
     }
-    console.error("Error with initial payout request.", payoutResponse.body);
+    log.error({ statusCode: payoutResponse.statusCode, body: payoutResponse.body }, "Initial payout request failed");
     throw initialError;
   }
 
   // Step 3: 2FA challenge detected — extract metadata
+  log.trace("Payout step 3: extracting 2FA challenge metadata");
   const challengeMetadataEncodedHeader =
     payoutResponse.headers["rblx-challenge-metadata"];
 
@@ -179,6 +205,7 @@ async function payoutRobux(userId: number, amount: number) {
   });
 
   // Step 4: Submit 2FA Verification
+  log.trace("Payout step 4: submitting 2FA verification");
   const challengeHeaderId = payoutResponse.headers["rblx-challenge-id"];
 
   const twoFaVerificationResponse = await got.post<any>(
@@ -203,9 +230,9 @@ async function payoutRobux(userId: number, amount: number) {
   );
 
   if (twoFaVerificationResponse.statusCode !== 200) {
-    console.error(
-      "Two-step verification failed.",
-      twoFaVerificationResponse.body,
+    log.error(
+      { statusCode: twoFaVerificationResponse.statusCode },
+      "Two-step verification failed",
     );
     throw new RobloxError(
       RobloxErrorType.TWO_FA_FAILED,
@@ -225,6 +252,7 @@ async function payoutRobux(userId: number, amount: number) {
   }
 
   // Step 5: Send Challenge Continue Request
+  log.trace("Payout step 5: sending challenge continue request");
   const continueMetadata = {
     verificationToken: verificationToken,
     rememberDevice: true,
@@ -254,7 +282,7 @@ async function payoutRobux(userId: number, amount: number) {
   );
 
   if (continueResponse.statusCode !== 200) {
-    console.error("Challenge continuation failed.", continueResponse.body);
+    log.error({ statusCode: continueResponse.statusCode, body: continueResponse.body }, "Challenge continuation failed");
     const continueError = classifyHttpError(
       continueResponse.statusCode,
       continueResponse.headers,
@@ -269,6 +297,7 @@ async function payoutRobux(userId: number, amount: number) {
   }
 
   // Step 6: Retry Payout Request with 2FA Verification
+  log.trace("Payout step 6: retrying payout with 2FA verification");
   const encodedMetadata = Buffer.from(
     JSON.stringify(continueMetadata),
   ).toString("base64");
@@ -308,7 +337,7 @@ async function payoutRobux(userId: number, amount: number) {
     return finalResponse;
   }
 
-  console.error("Error with final payout request.", finalResponse.body);
+  log.error({ statusCode: finalResponse.statusCode, body: finalResponse.body }, "Final payout request failed");
   const finalError = classifyHttpError(
     finalResponse.statusCode,
     finalResponse.headers,
@@ -342,6 +371,7 @@ server.addHook(
 
     // If the user is not allowed, return a 403
     if (!allowed) {
+      req.log.warn({ ip: req.ip }, "Rejected request: invalid API key");
       return reply.code(403).send({ error: "Forbidden: invalid or missing API key" });
     }
   },
@@ -543,8 +573,8 @@ server.post(
 
       if (status === "approved") {
         const { user_id, amount } = requestDetails;
-        await payoutRobux(Number(user_id), Number(amount));
-        console.log(`Payout of ${amount} Robux to user ${user_id} completed.`);
+        await payoutRobux(Number(user_id), Number(amount), req.log);
+        req.log.info({ userId: Number(user_id), amount: Number(amount), requestId }, "Payout completed successfully");
       }
 
       await updatePayoutRequestStatus(
@@ -560,7 +590,7 @@ server.post(
         message: `Payout request ${requestId} status updated to '${status}'.`,
       };
     } catch (error) {
-      console.error(error);
+      req.log.error({ err: error instanceof Error ? error : undefined, requestId: req.body.requestId }, "Failed to update payout status");
       if (error instanceof RobloxError) {
         const statusCode = error.type === RobloxErrorType.AUTH_EXPIRED ? 503 : 500;
         res.status(statusCode);
@@ -780,13 +810,15 @@ async function bootstrap() {
   robloxSession = new RobloxSession(
     config.credentials.roblox,
     config.credentials.roblox_totp,
+    server.log,
   );
   await robloxSession.init(groupId);
   robloxSession.startHealthCheck();
 
   const address = await server.listen({ port: port });
   await server.ready();
-  console.log(`Server listening at ${address}`);
+  server.log.info({ address, port }, "Server listening");
+  server.log.info({ blacklistedIds: config.blacklistedIds, groupId, maxRobux }, "Configuration loaded");
 }
 
 await bootstrap();
