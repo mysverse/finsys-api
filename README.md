@@ -4,7 +4,7 @@ This repository hosts the source code for MYSverse FinSys API.
 
 ## Requirements
 
-- Node.js v20 LTS+
+- Node.js v22+
 - Postgres database
 - PNPM package manager `npm i -g pnpm`
 - .ROBLOSECURITY cookie
