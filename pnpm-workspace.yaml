@@ -1,0 +1,7 @@
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  noblox.js: true
+  prisma: true
+minimumReleaseAgeExclude:
+  - '@types/node@25.9.2'
